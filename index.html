@@ -16,24 +16,75 @@
     .copy-btn { display:inline-block; margin-top:12px; margin-left:8px; padding:12px 20px; background:#6b7280; color:#fff; border-radius:8px; cursor:pointer; border:0; }
     .err { color:#f87171; }
     .hint { font-size:12px; color:#666; margin-top:4px; }
+    .hidden { display:none; }
   </style>
 </head>
 <body>
-  <h2>📥 MediaFire → Permanent Download Link</h2>
-  <p>MediaFire link ထည့်ပါ — link ကိုနှိပ်တာနဲ့ ဖိုင်တန်းဒေါင်းတဲ့ permanent link ရပါမယ်။</p>
 
-  <label for="mf">MediaFire Link</label>
-  <input id="mf" type="text" placeholder="https://www.mediafire.com/file/..." />
+  <!-- ★★★ Login screen ★★★ -->
+  <div id="loginBox">
+    <h2>🔒 ဝင်ရောက်ရန်</h2>
+    <p>ဆက်လုပ်ဖို့ password ထည့်ပါ။</p>
+    <label for="pw">Password</label>
+    <input id="pw" type="password" placeholder="password" onkeydown="if(event.key==='Enter')login()" />
+    <button id="loginBtn" onclick="login()">ဝင်မယ်</button>
+    <div id="loginErr"></div>
+  </div>
 
-  <label for="fn">ဖိုင်နာမည် (optional)</label>
-  <input id="fn" type="text" placeholder="ဥပမာ — myvideo.mp4" />
-  <div class="hint">ထည့်မထားရင် မူရင်းဖိုင်နာမည် အလိုအလျောက်သုံးပါမယ်။</div>
+  <!-- ★★★ App screen (login အောင်မှ ပြ) ★★★ -->
+  <div id="appBox" class="hidden">
+    <h2>📥 MediaFire → Permanent Download Link</h2>
+    <p>MediaFire link ထည့်ပါ — link ကိုနှိပ်တာနဲ့ ဖိုင်တန်းဒေါင်းတဲ့ permanent link ရပါမယ်။</p>
 
-  <button id="btn" onclick="add()">Link ထုတ်ရန်</button>
+    <label for="mf">MediaFire Link</label>
+    <input id="mf" type="text" placeholder="https://www.mediafire.com/file/..." />
 
-  <div id="out"></div>
+    <label for="fn">ဖိုင်နာမည် (optional)</label>
+    <input id="fn" type="text" placeholder="ဥပမာ — myvideo.mp4" />
+    <div class="hint">ထည့်မထားရင် မူရင်းဖိုင်နာမည် အလိုအလျောက်သုံးပါမယ်။</div>
+
+    <button id="btn" onclick="add()">Link ထုတ်ရန်</button>
+    <div id="out"></div>
+  </div>
 
   <script>
+    // ───────────── Login ─────────────
+    async function login() {
+      const pw = document.getElementById("pw").value;
+      const err = document.getElementById("loginErr");
+      const btn = document.getElementById("loginBtn");
+      err.innerHTML = "";
+
+      if (!pw) { err.innerHTML = '<p class="err">password ထည့်ပါ</p>'; return; }
+
+      btn.disabled = true;
+      try {
+        const r = await fetch("/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: pw }),
+        });
+        const j = await r.json();
+        if (r.ok && j.ok) {
+          // ★ cookie ကျသွားပြီ → app ပြ
+          showApp();
+        } else {
+          err.innerHTML = '<p class="err">' + (j.error || "မအောင်မြင်ပါ") + '</p>';
+        }
+      } catch (e) {
+        err.innerHTML = '<p class="err">Error: ' + e.message + '</p>';
+      } finally {
+        btn.disabled = false;
+        document.getElementById("pw").value = "";
+      }
+    }
+
+    function showApp() {
+      document.getElementById("loginBox").classList.add("hidden");
+      document.getElementById("appBox").classList.remove("hidden");
+    }
+
+    // ───────────── Add link ─────────────
     async function add() {
       const mf = document.getElementById("mf").value.trim();
       const fn = document.getElementById("fn").value.trim();
@@ -50,10 +101,18 @@
         if (fn) api += "&name=" + encodeURIComponent(fn);
 
         const r = await fetch(api);
+
+        // ★ session expire ဖြစ်ရင် login ပြန်ပြ
+        if (r.status === 401) {
+          out.innerHTML = '<p class="err">Session ကုန်သွားပါပြီ — login ပြန်ဝင်ပါ</p>';
+          document.getElementById("appBox").classList.add("hidden");
+          document.getElementById("loginBox").classList.remove("hidden");
+          return;
+        }
+
         const j = await r.json();
         if (j.error) { out.innerHTML = '<p class="err">' + j.error + '</p>'; return; }
 
-        // ★ link ကို attribute ထဲ ဘေးကင်းအောင် escape
         const safeLink = j.link.replace(/"/g, "&quot;");
 
         out.innerHTML = `
@@ -65,7 +124,6 @@
           ${j.name ? '<div class="hint">ဖိုင်နာမည်: ' + j.name + '</div>' : ''}
         `;
 
-        // ★ copy button — onclick string ထဲ link ထည့်တာထက် ပိုလုံခြုံ
         document.getElementById("copyBtn").addEventListener("click", function () {
           navigator.clipboard.writeText(j.link).then(() => {
             alert("Link copy လုပ်ပြီးပါပြီ ✓");
